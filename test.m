@@ -1,39 +1,37 @@
+clear all
 close all
 clc
-clear all
+warning('off','MATLAB:images:initSize:adjustingMag');
 
 %% Different threshold and system dependent configs
 AREA_THRES = 3000;
 AREA_CHAR_THRES = [200, 10000]; %min and max threshold fixed values
-RESTRICTED_CHAR = ['d']; %These restricted charcters need not to be printed
+RESTRICTED_CHAR = {'d'}; %These restricted charcters need not to be printed
 CHAR_LEN_WINDOW = 20; %window for adaptive threshold
 CHAR_SKIP_LEN = 50; %character having less than 10 pixels length is discarded in adapt_thresh
-image_names = ls;
-sample_size = 3;
-%sample_size = size(image_names,1);
-DEBUG = 1; %Will generate many intermediate figures
+DEBUG = 0; % Will generate many intermediate figures
 SHOW_ORIGINAL = 0; % If 1 then original image will be displayed, Overrides DEBUG
+PATH_TEMPLATE = 'C:\Users\atulgupta\OneDrive\Documents\studies\7thsem\EE604A_img_process\proj\mat'; % Path where mat structure of template is present should not include its name
+TEMPLATE_NAME = 'temp'; % Name of the mat file having template information
+DATASET_LOC = 'C:\Users\atulgupta\OneDrive\Documents\studies\7thsem\EE604A_img_process\proj\mat\dataset';
 
 %% Loading the image templates and list for the image's name
-%templateObj = matfile('templates_folder/temp');
-%TEMPLATE_FOLDER = 'templates_folder';
-load('temp');
-templateObj = matfile('temp');
-templateStruct = whos(templateObj);
-template_list = {templateStruct.name};
-%template_list = 
-size_x = size(eval(template_list{1}),1); % Getting the dimension for the template image, X size
-size_y = size(eval(template_list{1}),2);
+image_names = ls(DATASET_LOC);
+sample_size = size(image_names,1);
+template_obj = matfile(fullfile(PATH_TEMPLATE,TEMPLATE_NAME));
+template_var_prop = whos(template_obj);
+template_list = {template_var_prop.name};
+size_x = size(template_obj.(template_list{1}),1); % Getting the dimension for the template image, X size
+size_y = size(template_obj.(template_list{1}),2);
 
-
-%% Processing the image
+%% Processing all the images in the specified folder
 for i =1:sample_size-2
-    %img_name = image_names(i+2,:)
-    %img_name = 'dataset/60.jpg';
-    %img_name = '60.jpg';
-    img_name = '89.jpg';
-    %img_name = '55.jpg';
-    img = imread(img_name);
+    img_name = image_names(i+2,:);
+%     if ~strcmp(img_name,'HPIM0814 me megalh paramorfosh.JPG')
+%         continue;
+%     end
+    img_full_name = fullfile(DATASET_LOC,img_name);
+    img = imread(img_full_name);
     img = im2double(img);
     img_red = img(:,:,1);
     img_blue = img(:,:,2);
@@ -62,7 +60,7 @@ for i =1:sample_size-2
     img_filled = imdilate(img_filled,ones(7));
     if DEBUG == 1
         figure, imshow(img_filled);
-        title('image filled');
+        title('Image filled');
     end
     %size(padarray(zeros(size(img_filled) -200),[100 100],1))
     img_filled = img_filled + padarray(zeros(size(img_filled) -100),[50 50],1);
@@ -73,7 +71,7 @@ for i =1:sample_size-2
     img_clearborder = imclearborder(img_filled,ones(3));
     if DEBUG == 1
         figure, imshow(img_clearborder);
-        title('border clear');
+        title('Border clear');
     end
     
     %img_largest = bwareafilt(img_clearborder,1,'largest');
@@ -87,7 +85,7 @@ for i =1:sample_size-2
         figure, imshow(img_largest);
         title('Clear areas below 1000 pixels');
     end
-    [B, L] = bwboundaries(img_largest,'noholes');
+    [~, L] = bwboundaries(img_largest,'noholes');
     stats1 = regionprops(L, 'all');
     
     temp = zeros(size(L));
@@ -102,9 +100,13 @@ for i =1:sample_size-2
             selected_index = [selected_index, j];
         end
     end
-    figure, imshow(temp)
+    if selected_regions == 0
+        fprintf(['Error! Could not process ',img_name,'\n']);
+        continue;
+    end
     img_final = img_grey.* logical(temp);
     figure, imshow(img_final)
+    title(['Detected License Plate in ',img_name]);
     if selected_regions == 1
         license_coordinates = uint16(stats1(selected_index(1)).BoundingBox);
         temp = stats1(selected_index(1)).Image;
@@ -128,14 +130,14 @@ for i =1:sample_size-2
     end
     if DEBUG == 1
         figure,imshow(bw);
-        title('Before erosion ');
+        title('Before erosion');
     end
     bw = ~imerode(~bw,[1,1; 1,1]);
     bw = ~imdilate(~bw,[1,1; 1,1]);
     %graythresh(img_final)
     if DEBUG == 1
         figure,imshow(bw);
-        title('License image final in black and white ');
+        title('License image final in black and white');
     end
     %Dilating to make license plate separate from the background
     %bw = imclose(bw,[1,1,1;1,1,1;1,1,1]);
@@ -146,10 +148,6 @@ for i =1:sample_size-2
     %bw = bw(100 : size(bw,1) - 100, 100 : size(bw,2) - 100);
     bw = impyramid(bw,'expand');
     bw = impyramid(bw,'expand');
-    if DEBUG == 1
-        figure, imshow(bw);
-        title('100 pixels removed');
-    end
     bw = ~bwareaopen(~bw,100,8); %removing set containing less than 100 pts in inverted image
     if DEBUG == 1
         figure, imshow(bw);
@@ -172,11 +170,11 @@ for i =1:sample_size-2
     end
     
 % find both black and white regions
-    length = numel(stats2);
-    for j = 1:numel(stats2)
-        rectangle('Position', stats2(i).BoundingBox, ...
-        'Linewidth', 1, 'EdgeColor', 'r', 'LineStyle', '-');
-    end
+%     length = numel(stats2);
+%     for j = 1:numel(stats2)
+%         rectangle('Position', stats2(i).BoundingBox, ...
+%         'Linewidth', 1, 'EdgeColor', 'r', 'LineStyle', '-');
+%     end
     
     %% Matching with the template
     finalAns = '';
@@ -187,40 +185,30 @@ for i =1:sample_size-2
     end
     length_mean_index = adapt_thresh(length_array, CHAR_LEN_WINDOW, CHAR_SKIP_LEN);
     for j = 1:numel(stats2)
-        
         if stats2(j).Area > AREA_CHAR_THRES(2) || stats2(j).Area < AREA_CHAR_THRES(1)
-            j1 = j
             continue;
         end
         if abs(stats2(j).BoundingBox(4) - stats2(length_mean_index).BoundingBox(4)) > CHAR_LEN_WINDOW
-            j2 = j
             continue;
         end
         boxDimen = stats2(j).BoundingBox;
         boxDimen = uint32(boxDimen);
         x0 = floor(boxDimen(1));
         y0 = floor(boxDimen(2));
-        %figure, imshow(stats2(j).Image);
-        %figure, imshow(stats2(j).FilledImage);
         img_char = bw(y0 : y0 + boxDimen(4)-1, x0 : x0 + boxDimen(3)-1);
-        %img_char = stats2(j).Image;
-        figure, imshow(img_char);
+        if DEBUG == 1
+            figure, imshow(img_char);
+            title('Character detected');
+        end
         img_char = imresize(img_char,[size_x,size_y]);
-        %imwrite(img_char,[num2str(j),'.jpg']);
-        %figure, imshow(img_char);
         imwrite(img_char,[num2str(j),'.jpg']);
         tempCorr = -1;
         tempFile = '';
         for k = 1:size(template_list,2)
-            temp_char = eval(template_list{k});
-            %temp_char = imresize(temp_char,size(img_char));
+            temp_char = template_obj.(template_list{k});
             corr = corr2(img_char, temp_char);
-            %corrb = sum(sum(abs(img_char - logical(eval(template_list{k})))));
-            %corr = corra/corrb;
             template_list{k}(end);
             if template_list{k}(end) == 'I' || template_list{k}(end) == '4'
-                %figure, imshow(temp_char);
-                %title('Template character I');
                 corr;
             end
             corr;
@@ -230,12 +218,10 @@ for i =1:sample_size-2
             end
         end
         if(ismember(RESTRICTED_CHAR,tempFile{1}(end)))
-            'escaped';
+            fprintf('escaped');
             continue
         end
         finalAns = strcat(finalAns,tempFile{1}(end));
     end
-    %clc
     fprintf('License Plate Detected: %s\n',finalAns)  % Final Answer
 end
-%close all
